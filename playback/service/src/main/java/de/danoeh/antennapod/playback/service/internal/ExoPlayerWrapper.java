@@ -56,11 +56,20 @@ import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 
 import java.io.File;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 @OptIn(markerClass = UnstableApi.class)
 public class ExoPlayerWrapper {
@@ -82,6 +91,44 @@ public class ExoPlayerWrapper {
     @Nullable
     private LoudnessEnhancer loudnessEnhancer = null;
 
+    /**
+     * Source: https://stackoverflow.com/a/53220430
+     * License: https://creativecommons.org/licenses/by-sa/4.0/
+     * Author: youteng li
+     * This code has been modified from the original
+     */
+    private static void disableSSLCertificateVerify() {
+        TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        X509Certificate[] myTrustedAnchors = new X509Certificate[0];
+                        return myTrustedAnchors;
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
+        };
+
+        try {
+            SSLContext sc = SSLContext.getInstance("SSL");
+
+            sc.init(null, trustAllCerts, new SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true;
+                }
+            });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     ExoPlayerWrapper(Context context) {
         this.context = context;
         createPlayer();
@@ -96,6 +143,7 @@ public class ExoPlayerWrapper {
     }
 
     private void createPlayer() {
+        disableSSLCertificateVerify();
         DefaultLoadControl.Builder loadControl = new DefaultLoadControl.Builder();
         loadControl.setBufferDurationsMs(30000, 120000,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
